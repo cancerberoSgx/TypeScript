@@ -67,8 +67,11 @@ namespace ts {
      * @param cbNodes a callback to be invoked for embedded array
      *
      * @remarks `forEachChild` must visit the children of a node in the order that they appear in the source code.
-     * The language service depends on this property to locate nodes by position. Also, it will only visit nodes
-     * that have already been parsed.
+     * The language service depends on this property to locate nodes by position.
+     *
+     * @remarks `forEachChild` will omit token nodes that are largely insignificant for normal understanding of
+     * the code like braces, parenthesis, syntax list, semicolons, etc. For visiting those kind of nodes use
+     * method `Node.getChildren()`
      */
     export function forEachChild<T>(node: Node, cbNode: (node: Node) => T | undefined, cbNodes?: (nodes: NodeArray<Node>) => T | undefined): T | undefined {
         if (!node || node.kind <= SyntaxKind.LastToken) {
