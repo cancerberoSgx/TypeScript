@@ -7,6 +7,13 @@ namespace ts {
         /* @internal */
         // tslint:disable-next-line unified-signatures
         getChildren(sourceFile?: SourceFileLike): Node[];
+        /**
+         * Returns the index of this node in its the source file as returned by 
+         * `SourceFile.getText()`
+         * @param sourceFile Optional but recommended for performance if user has already reference
+         * to the node's source file.
+         * @param includeJsDocComment 
+         */
         getStart(sourceFile?: SourceFile, includeJsDocComment?: boolean): number;
         /* @internal */
         // tslint:disable-next-line unified-signatures
@@ -16,7 +23,16 @@ namespace ts {
         getWidth(sourceFile?: SourceFileLike): number;
         getFullWidth(): number;
         getLeadingTriviaWidth(sourceFile?: SourceFile): number;
+        /**
+         * Returns current text of given source file. In contrast to `getText` that omits leading
+         * comments and other trivia, `getFullText` returns everything.
+         */
         getFullText(sourceFile?: SourceFile): string;
+        /**
+         * Returns current text of given source file. Omits irrelevant content (trivia) like
+         * non JsDoc comments, spaces, etc that is not included in the AST, in contrast to 
+         * `getFullText` that includes everything. 
+         */
         getText(sourceFile?: SourceFile): string;
         getFirstToken(sourceFile?: SourceFile): Node | undefined;
         getLastToken(sourceFile?: SourceFile): Node | undefined;
