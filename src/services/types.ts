@@ -77,7 +77,7 @@ namespace ts {
         getFirstToken(sourceFile?: SourceFile): Node | undefined;
         getLastToken(sourceFile?: SourceFile): Node | undefined;
         /**
-         * See`ts.forEachChild()`.
+         * See `ts.forEachChild()`.
          */
         forEachChild<T>(cbNode: (node: Node) => T | undefined, cbNodeArray?: (nodes: NodeArray<Node>) => T | undefined): T | undefined;
     }
