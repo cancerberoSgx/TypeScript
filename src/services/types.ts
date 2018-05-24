@@ -8,38 +8,55 @@ namespace ts {
         // tslint:disable-next-line unified-signatures
         getChildren(sourceFile?: SourceFileLike): Node[];
         /**
-         * Returns the index of this node in its the source file as returned by 
-         * `SourceFile.getText()`
-         * @param sourceFile Optional but recommended for performance if user has already reference
-         * to the node's source file.
-         * @param includeJsDocComment 
+         * Returns the index where this node starts in its source file's text as returned by
+         * `getText()`
+         * @param sourceFile Recommended for performance if user has already a reference to this node's source file.
          */
         getStart(sourceFile?: SourceFile, includeJsDocComment?: boolean): number;
         /* @internal */
         // tslint:disable-next-line unified-signatures
         getStart(sourceFile?: SourceFileLike, includeJsDocComment?: boolean): number;
+        /**
+         * Returns the index where this node starts in its source file's text as returned by
+         * `getFullText()`
+         */
         getFullStart(): number;
+        /**
+         * Returns the index where this node ends in its source file's text
+         */
         getEnd(): number;
+        /**
+         * Returns the length of this node in its source file's text as returned by
+         * `getText()`
+         * @param sourceFile Recommended for performance if user has already a reference to this node's source file.
+         */
         getWidth(sourceFile?: SourceFileLike): number;
+        /**
+         * Returns the length of this node in its source file's text as returned by
+         * `getFullText()`
+         */
         getFullWidth(): number;
+        /**
+         * Return the length of this node's leading trivia text. "Trivia" is content like whitespaces, comments, conflict markers, etc that is not relevant to understand the AST.
+         * @param sourceFile Recommended for performance if user has already a reference to this node's source file.
+         */
         getLeadingTriviaWidth(sourceFile?: SourceFile): number;
         /**
-         * Returns current text of given source file. In contrast to `getText` that omits leading
-         * comments and other trivia, `getFullText` returns everything.
+         * Returns current text of given source file. In contrast to `getText`, `getFullText` doesn't omit leading trivia.
          */
         getFullText(sourceFile?: SourceFile): string;
         /**
-         * Returns current text of given source file. Omits irrelevant content (trivia) like
-         * non JsDoc comments, spaces, etc that is not included in the AST, in contrast to 
-         * `getFullText` that includes everything. 
+         * Returns current text of given source file omitting trivia content, in contrast to
+         * `getFullText` that includes everything.
          */
         getText(sourceFile?: SourceFile): string;
         getFirstToken(sourceFile?: SourceFile): Node | undefined;
         getLastToken(sourceFile?: SourceFile): Node | undefined;
-        // See ts.forEachChild for documentation.
+        /**
+         * See `ts.forEachChild()`.
+         */
         forEachChild<T>(cbNode: (node: Node) => T | undefined, cbNodeArray?: (nodes: NodeArray<Node>) => T | undefined): T | undefined;
     }
-
     export interface Identifier {
         readonly text: string;
     }
