@@ -587,7 +587,7 @@ namespace ts {
             transformAndEmitStatements(body.statements, statementOffset);
 
             const buildResult = build();
-            prependRange(statements, endLexicalEnvironment());
+            addStatementsAfterPrologue(statements, endLexicalEnvironment());
             statements.push(createReturn(buildResult));
 
             // Restore previous generator state
@@ -637,7 +637,7 @@ namespace ts {
                 }
 
                 return setSourceMapRange(
-                    createStatement(
+                    createExpressionStatement(
                         inlineExpressions(
                             map(variables, transformInitializedVariable)
                         )
@@ -872,7 +872,7 @@ namespace ts {
                 }
                 else {
                     if (containsYield(node) && pendingExpressions.length > 0) {
-                        emitWorker(OpCode.Statement, [createStatement(inlineExpressions(pendingExpressions))]);
+                        emitWorker(OpCode.Statement, [createExpressionStatement(inlineExpressions(pendingExpressions))]);
                         pendingExpressions = [];
                     }
 
@@ -1067,7 +1067,7 @@ namespace ts {
 
             function reduceProperty(expressions: Expression[], property: ObjectLiteralElementLike) {
                 if (containsYield(property) && expressions.length > 0) {
-                    emitStatement(createStatement(inlineExpressions(expressions)));
+                    emitStatement(createExpressionStatement(inlineExpressions(expressions)));
                     expressions = [];
                 }
 
@@ -1270,7 +1270,7 @@ namespace ts {
                 }
 
                 if (pendingExpressions.length) {
-                    emitStatement(createStatement(inlineExpressions(pendingExpressions)));
+                    emitStatement(createExpressionStatement(inlineExpressions(pendingExpressions)));
                     variablesWritten += pendingExpressions.length;
                     pendingExpressions = [];
                 }
@@ -1441,7 +1441,7 @@ namespace ts {
                     else {
                         emitStatement(
                             setTextRange(
-                                createStatement(
+                                createExpressionStatement(
                                     visitNode(initializer, visitor, isExpression)
                                 ),
                                 initializer
@@ -1461,7 +1461,7 @@ namespace ts {
                 if (node.incrementor) {
                     emitStatement(
                         setTextRange(
-                            createStatement(
+                            createExpressionStatement(
                                 visitNode(node.incrementor, visitor, isExpression)
                             ),
                             node.incrementor
@@ -1543,7 +1543,7 @@ namespace ts {
                     createForIn(
                         key,
                         visitNode(node.expression, visitor, isExpression),
-                        createStatement(
+                        createExpressionStatement(
                             createCall(
                                 createPropertyAccess(keysArray, "push"),
                                 /*typeArguments*/ undefined,
@@ -1579,7 +1579,7 @@ namespace ts {
                 transformAndEmitEmbeddedStatement(node.statement);
 
                 markLabel(incrementLabel);
-                emitStatement(createStatement(createPostfixIncrement(keysIndex)));
+                emitStatement(createExpressionStatement(createPostfixIncrement(keysIndex)));
 
                 emitBreak(conditionLabel);
                 endLoopBlock();
@@ -2778,7 +2778,7 @@ namespace ts {
                     // for each block in the protected region.
                     const { startLabel, catchLabel, finallyLabel, endLabel } = currentExceptionBlock;
                     statements.unshift(
-                        createStatement(
+                        createExpressionStatement(
                             createCall(
                                 createPropertyAccess(createPropertyAccess(state, "trys"), "push"),
                                 /*typeArguments*/ undefined,
@@ -2801,7 +2801,7 @@ namespace ts {
                     // The case clause for the last label falls through to this label, so we
                     // add an assignment statement to reflect the change in labels.
                     statements.push(
-                        createStatement(
+                        createExpressionStatement(
                             createAssignment(
                                 createPropertyAccess(state, "label"),
                                 createLiteral(labelNumber + 1)
@@ -2985,7 +2985,7 @@ namespace ts {
          * @param operationLocation The source map location for the operation.
          */
         function writeAssign(left: Expression, right: Expression, operationLocation: TextRange | undefined): void {
-            writeStatement(setTextRange(createStatement(createAssignment(left, right)), operationLocation));
+            writeStatement(setTextRange(createExpressionStatement(createAssignment(left, right)), operationLocation));
         }
 
         /**
@@ -3252,8 +3252,8 @@ namespace ts {
                 function step(op) {
                     if (f) throw new TypeError("Generator is already executing.");
                     while (_) try {
-                        if (f = 1, y && (t = y[op[0] & 2 ? "return" : op[0] ? "throw" : "next"]) && !(t = t.call(y, op[1])).done) return t;
-                        if (y = 0, t) op = [0, t.value];
+                        if (f = 1, y && (t = op[0] & 2 ? y["return"] : op[0] ? y["throw"] || ((t = y["return"]) && t.call(y), 0) : y.next) && !(t = t.call(y, op[1])).done) return t;
+                        if (y = 0, t) op = [op[0] & 2, t.value];
                         switch (op[0]) {
                             case 0: case 1: t = op; break;
                             case 4: _.label++; return { value: op[1], done: false };

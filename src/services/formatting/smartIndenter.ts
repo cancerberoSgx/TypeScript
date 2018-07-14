@@ -32,10 +32,10 @@ namespace ts.formatting {
                 return 0;
             }
 
-            const precedingToken = findPrecedingToken(position, sourceFile);
+            const precedingToken = findPrecedingToken(position, sourceFile, /*startNode*/ undefined, /*excludeJsdoc*/ true);
 
-            const enclosingCommentRange = getRangeOfEnclosingComment(sourceFile, position, /*onlyMultiLine*/ true, precedingToken || null); // tslint:disable-line:no-null-keyword
-            if (enclosingCommentRange) {
+            const enclosingCommentRange = getRangeOfEnclosingComment(sourceFile, position, precedingToken || null); // tslint:disable-line:no-null-keyword
+            if (enclosingCommentRange && enclosingCommentRange.kind === SyntaxKind.MultiLineCommentTrivia) {
                 return getCommentIndent(sourceFile, position, options, enclosingCommentRange);
             }
 
@@ -351,7 +351,10 @@ namespace ts.formatting {
                             getListIfStartEndIsInListRange((<SignatureDeclaration>node.parent).parameters, start, end);
                     }
                     case SyntaxKind.ClassDeclaration:
-                        return getListIfStartEndIsInListRange((<ClassDeclaration>node.parent).typeParameters, node.getStart(sourceFile), end);
+                    case SyntaxKind.ClassExpression:
+                    case SyntaxKind.InterfaceDeclaration:
+                    case SyntaxKind.TypeAliasDeclaration:
+                        return getListIfStartEndIsInListRange((<ClassDeclaration | ClassExpression | InterfaceDeclaration | TypeAliasDeclaration>node.parent).typeParameters, node.getStart(sourceFile), end);
                     case SyntaxKind.NewExpression:
                     case SyntaxKind.CallExpression: {
                         const start = node.getStart(sourceFile);

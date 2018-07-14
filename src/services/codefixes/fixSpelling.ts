@@ -29,13 +29,13 @@ namespace ts.codefix {
         // This is the identifier of the misspelled word. eg:
         // this.speling = 1;
         //      ^^^^^^^
-        const node = getTokenAtPosition(sourceFile, pos, /*includeJsDocComment*/ false); // TODO: GH#15852
+        const node = getTokenAtPosition(sourceFile, pos);
         const checker = context.program.getTypeChecker();
 
         let suggestion: string | undefined;
         if (isPropertyAccessExpression(node.parent) && node.parent.name === node) {
             Debug.assert(node.kind === SyntaxKind.Identifier);
-            const containingType = checker.getTypeAtLocation(node.parent.expression)!;
+            const containingType = checker.getTypeAtLocation(node.parent.expression);
             suggestion = checker.getSuggestionForNonexistentProperty(node as Identifier, containingType);
         }
         else if (isImportSpecifier(node.parent) && node.parent.name === node) {
@@ -43,7 +43,7 @@ namespace ts.codefix {
             const importDeclaration = findAncestor(node, isImportDeclaration)!;
             const resolvedSourceFile = getResolvedSourceFileFromImportDeclaration(sourceFile, context, importDeclaration);
             if (resolvedSourceFile && resolvedSourceFile.symbol) {
-                suggestion = checker.getSuggestionForNonexistentModule(node as Identifier, resolvedSourceFile.symbol);
+                suggestion = checker.getSuggestionForNonexistentExport(node as Identifier, resolvedSourceFile.symbol);
             }
         }
         else {

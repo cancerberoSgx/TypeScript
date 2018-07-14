@@ -11,11 +11,12 @@ namespace ts {
 
     const declarationEmitNodeBuilderFlags =
         NodeBuilderFlags.MultilineObjectLiterals |
-        TypeFormatFlags.WriteClassExpressionAsTypeLiteral |
+        NodeBuilderFlags.WriteClassExpressionAsTypeLiteral |
         NodeBuilderFlags.UseTypeOfFunction |
         NodeBuilderFlags.UseStructuralFallback |
         NodeBuilderFlags.AllowEmptyTuple |
-        NodeBuilderFlags.GenerateNamesForShadowedTypeParams;
+        NodeBuilderFlags.GenerateNamesForShadowedTypeParams |
+        NodeBuilderFlags.NoTruncation;
 
     /**
      * Transforms a ts file into a .d.ts file
@@ -66,7 +67,13 @@ namespace ts {
             }
         }
 
-        function trackReferencedAmbientModule(node: ModuleDeclaration) {
+        function trackReferencedAmbientModule(node: ModuleDeclaration, symbol: Symbol) {
+            // If it is visible via `// <reference types="..."/>`, then we should just use that
+            const directives = resolver.getTypeReferenceDirectivesForSymbol(symbol, SymbolFlags.All);
+            if (length(directives)) {
+                return recordTypeReferenceDirectivesIfNecessary(directives);
+            }
+            // Otherwise we should emit a path-based reference
             const container = getSourceFileOfNode(node);
             refs.set("" + getOriginalNodeId(container), container);
         }
@@ -171,16 +178,16 @@ namespace ts {
                                 [createModifier(SyntaxKind.DeclareKeyword)],
                                 createLiteral(getResolvedExternalModuleName(context.getEmitHost(), sourceFile)),
                                 createModuleBlock(setTextRange(createNodeArray(transformAndReplaceLatePaintedStatements(statements)), sourceFile.statements))
-                            )], /*isDeclarationFile*/ true, /*referencedFiles*/ [], /*typeReferences*/ [], /*hasNoDefaultLib*/ false);
+                            )], /*isDeclarationFile*/ true, /*referencedFiles*/ [], /*typeReferences*/ [], /*hasNoDefaultLib*/ false, /*libReferences*/ []);
                             return newFile;
                         }
                         needsDeclare = true;
                         const updated = visitNodes(sourceFile.statements, visitDeclarationStatements);
-                        return updateSourceFileNode(sourceFile, transformAndReplaceLatePaintedStatements(updated), /*isDeclarationFile*/ true, /*referencedFiles*/ [], /*typeReferences*/ [], /*hasNoDefaultLib*/ false);
+                        return updateSourceFileNode(sourceFile, transformAndReplaceLatePaintedStatements(updated), /*isDeclarationFile*/ true, /*referencedFiles*/ [], /*typeReferences*/ [], /*hasNoDefaultLib*/ false, /*libReferences*/ []);
                     }
                 ), mapDefined(node.prepends, prepend => {
                     if (prepend.kind === SyntaxKind.InputFiles) {
-                        return createUnparsedSourceFile(prepend.declarationText);
+                        return createUnparsedSourceFile(prepend.declarationText, prepend.declarationMapPath, prepend.declarationMapText);
                     }
                 }));
                 bundle.syntheticFileReferences = [];
@@ -1022,7 +1029,7 @@ namespace ts {
                     }
                     const members = createNodeArray(concatenate(parameterProperties, visitNodes(input.members, visitDeclarationSubtree)));
 
-                    const extendsClause = getClassExtendsHeritageClauseElement(input);
+                    const extendsClause = getEffectiveBaseTypeNode(input);
                     if (extendsClause && !isEntityNameExpression(extendsClause.expression) && extendsClause.expression.kind !== SyntaxKind.NullKeyword) {
                         // We must add a temporary declaration for the extends clause expression
 

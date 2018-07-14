@@ -19,7 +19,7 @@ namespace ts.SignatureHelp {
         argumentCount: number;
     }
 
-    export function getSignatureHelpItems(program: Program, sourceFile: SourceFile, position: number, cancellationToken: CancellationToken): SignatureHelpItems | undefined {
+    export function getSignatureHelpItems(program: Program, sourceFile: SourceFile, position: number, triggerReason: SignatureHelpTriggerReason | undefined, cancellationToken: CancellationToken): SignatureHelpItems | undefined {
         const typeChecker = program.getTypeChecker();
 
         // Decide whether to show signature help
@@ -29,13 +29,23 @@ namespace ts.SignatureHelp {
             return undefined;
         }
 
+        // Only need to be careful if the user typed a character and signature help wasn't showing.
+        const shouldCarefullyCheckContext = !!triggerReason && triggerReason.kind === "characterTyped";
+
+        // Bail out quickly in the middle of a string or comment, don't provide signature help unless the user explicitly requested it.
+        if (shouldCarefullyCheckContext) {
+            if (isInString(sourceFile, position, startingToken) || isInComment(sourceFile, position)) {
+                return undefined;
+            }
+        }
+
         const argumentInfo = getContainingArgumentInfo(startingToken, position, sourceFile);
         if (!argumentInfo) return undefined;
 
         cancellationToken.throwIfCancellationRequested();
 
-        // Semantic filtering of signature help
-        const candidateInfo = getCandidateInfo(argumentInfo, typeChecker);
+        // Extra syntactic and semantic filtering of signature help
+        const candidateInfo = getCandidateInfo(argumentInfo, typeChecker, sourceFile, startingToken, shouldCarefullyCheckContext);
         cancellationToken.throwIfCancellationRequested();
 
         if (!candidateInfo) {
@@ -50,18 +60,54 @@ namespace ts.SignatureHelp {
         return typeChecker.runWithCancellationToken(cancellationToken, typeChecker => createSignatureHelpItems(candidateInfo.candidates, candidateInfo.resolvedSignature, argumentInfo, sourceFile, typeChecker));
     }
 
-    function getCandidateInfo(argumentInfo: ArgumentListInfo, checker: TypeChecker): { readonly candidates: ReadonlyArray<Signature>, readonly resolvedSignature: Signature } | undefined {
+    function getCandidateInfo(
+        argumentInfo: ArgumentListInfo, checker: TypeChecker, sourceFile: SourceFile, startingToken: Node, onlyUseSyntacticOwners: boolean):
+            { readonly candidates: ReadonlyArray<Signature>, readonly resolvedSignature: Signature } | undefined {
+
         const { invocation } = argumentInfo;
         if (invocation.kind === InvocationKind.Call) {
+            if (onlyUseSyntacticOwners) {
+                if (isCallOrNewExpression(invocation.node)) {
+                    const invocationChildren = invocation.node.getChildren(sourceFile);
+                    switch (startingToken.kind) {
+                        case SyntaxKind.OpenParenToken:
+                            if (!contains(invocationChildren, startingToken)) {
+                                return undefined;
+                            }
+                            break;
+                        case SyntaxKind.CommaToken:
+                            const containingList = findContainingList(startingToken);
+                            if (!containingList || !contains(invocationChildren, findContainingList(startingToken))) {
+                                return undefined;
+                            }
+                            break;
+                        case SyntaxKind.LessThanToken:
+                            if (!lessThanFollowsCalledExpression(startingToken, sourceFile, invocation.node.expression)) {
+                                return undefined;
+                            }
+                            break;
+                        default:
+                            return undefined;
+                    }
+                }
+                else {
+                    return undefined;
+                }
+            }
+
             const candidates: Signature[] = [];
             const resolvedSignature = checker.getResolvedSignature(invocation.node, candidates, argumentInfo.argumentCount)!; // TODO: GH#18217
             return candidates.length === 0 ? undefined : { candidates, resolvedSignature };
         }
-        else {
-            const type = checker.getTypeAtLocation(invocation.called)!; // TODO: GH#18217
-            const signatures = isNewExpression(invocation.called.parent) ? type.getConstructSignatures() : type.getCallSignatures();
-            const candidates = signatures.filter(candidate => !!candidate.typeParameters && candidate.typeParameters.length >= argumentInfo.argumentCount);
+        else if (invocation.kind === InvocationKind.TypeArgs) {
+            if (onlyUseSyntacticOwners && !lessThanFollowsCalledExpression(startingToken, sourceFile, invocation.called)) {
+                return undefined;
+            }
+            const candidates = getPossibleGenericSignatures(invocation.called, argumentInfo.argumentCount, checker);
             return candidates.length === 0 ? undefined : { candidates, resolvedSignature: first(candidates) };
+        }
+        else {
+            Debug.assertNever(invocation);
         }
     }
 
@@ -93,6 +139,14 @@ namespace ts.SignatureHelp {
                 }
             }
         }
+    }
+
+    function lessThanFollowsCalledExpression(startingToken: Node, sourceFile: SourceFile, calledExpression: Expression) {
+        const precedingToken = Debug.assertDefined(
+            findPrecedingToken(startingToken.getFullStart(), sourceFile, startingToken.parent, /*excludeJsdoc*/ true)
+        );
+
+        return rangeContainsRange(calledExpression, precedingToken);
     }
 
     export interface ArgumentInfoForCompletions {
@@ -161,7 +215,7 @@ namespace ts.SignatureHelp {
         else if (isNoSubstitutionTemplateLiteral(node) && isTaggedTemplateExpression(parent)) {
             // Check if we're actually inside the template;
             // otherwise we'll fall out and return undefined.
-            if (isInsideTemplateLiteral(node, position)) {
+            if (isInsideTemplateLiteral(node, position, sourceFile)) {
                 return getArgumentListInfoForTemplate(parent, /*argumentIndex*/ 0, sourceFile);
             }
         }
@@ -170,7 +224,7 @@ namespace ts.SignatureHelp {
             const tagExpression = <TaggedTemplateExpression>templateExpression.parent;
             Debug.assert(templateExpression.kind === SyntaxKind.TemplateExpression);
 
-            const argumentIndex = isInsideTemplateLiteral(node, position) ? 0 : 1;
+            const argumentIndex = isInsideTemplateLiteral(node, position, sourceFile) ? 0 : 1;
 
             return getArgumentListInfoForTemplate(tagExpression, argumentIndex, sourceFile);
         }
@@ -179,12 +233,12 @@ namespace ts.SignatureHelp {
             const tagExpression = parent.parent.parent;
 
             // If we're just after a template tail, don't show signature help.
-            if (node.kind === SyntaxKind.TemplateTail && !isInsideTemplateLiteral(<LiteralExpression>node, position)) {
+            if (isTemplateTail(node) && !isInsideTemplateLiteral(node, position, sourceFile)) {
                 return undefined;
             }
 
             const spanIndex = templateSpan.parent.templateSpans.indexOf(templateSpan);
-            const argumentIndex = getArgumentIndexForTemplatePiece(spanIndex, node, position);
+            const argumentIndex = getArgumentIndexForTemplatePiece(spanIndex, node, position, sourceFile);
 
             return getArgumentListInfoForTemplate(tagExpression, argumentIndex, sourceFile);
         }
@@ -205,7 +259,7 @@ namespace ts.SignatureHelp {
             };
         }
         else {
-            const typeArgInfo = isPossiblyTypeArgumentPosition(node, sourceFile);
+            const typeArgInfo = getPossibleTypeArgumentsInfo(node, sourceFile);
             if (typeArgInfo) {
                 const { called, nTypeArguments } = typeArgInfo;
                 const invocation: Invocation = { kind: InvocationKind.TypeArgs, called };
@@ -266,7 +320,7 @@ namespace ts.SignatureHelp {
 
     // spanIndex is either the index for a given template span.
     // This does not give appropriate results for a NoSubstitutionTemplateLiteral
-    function getArgumentIndexForTemplatePiece(spanIndex: number, node: Node, position: number): number {
+    function getArgumentIndexForTemplatePiece(spanIndex: number, node: Node, position: number, sourceFile: SourceFile): number {
         // Because the TemplateStringsArray is the first argument, we have to offset each substitution expression by 1.
         // There are three cases we can encounter:
         //      1. We are precisely in the template literal (argIndex = 0).
@@ -281,8 +335,8 @@ namespace ts.SignatureHelp {
         // Case:        1       1 3       2   1          3 2      2     1
         // tslint:enable no-double-space
         Debug.assert(position >= node.getStart(), "Assumed 'position' could not occur before node.");
-        if (isTemplateLiteralKind(node.kind)) {
-            if (isInsideTemplateLiteral(<LiteralExpression>node, position)) {
+        if (isTemplateLiteralToken(node)) {
+            if (isInsideTemplateLiteral(node, position, sourceFile)) {
                 return 0;
             }
             return spanIndex + 2;
@@ -366,7 +420,7 @@ namespace ts.SignatureHelp {
         return invocation.kind === InvocationKind.Call ? getInvokedExpression(invocation.node) : invocation.called;
     }
 
-    const signatureHelpNodeBuilderFlags = NodeBuilderFlags.OmitParameterModifiers | NodeBuilderFlags.IgnoreErrors;
+    const signatureHelpNodeBuilderFlags = NodeBuilderFlags.OmitParameterModifiers | NodeBuilderFlags.IgnoreErrors | NodeBuilderFlags.UseAliasDefinedOutsideCurrentScope;
     function createSignatureHelpItems(candidates: ReadonlyArray<Signature>, resolvedSignature: Signature, argumentListInfo: ArgumentListInfo, sourceFile: SourceFile, typeChecker: TypeChecker): SignatureHelpItems {
         const { argumentCount, argumentsSpan: applicableSpan, invocation, argumentIndex } = argumentListInfo;
         const isTypeParameterList = argumentListInfo.kind === ArgumentListKind.TypeArguments;
